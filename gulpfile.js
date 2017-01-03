@@ -1,81 +1,92 @@
 var gulp = require('gulp');
-var sass = require('gulp-sass');
-var concat = require('gulp-concat');
+var less = require('gulp-less');
+var browserSync = require('browser-sync').create();
+var header = require('gulp-header');
+var cleanCSS = require('gulp-clean-css');
+var rename = require("gulp-rename");
 var uglify = require('gulp-uglify');
-var minifyCSS = require('gulp-minify-css');
-var rename = require('gulp-rename');
-var connect = require('gulp-connect');
-var autoprefixer = require('gulp-autoprefixer');
-var ghPages = require('gulp-gh-pages');
+var pkg = require('./package.json');
 
-gulp.task('sass', function() {
-  return gulp.src('sass/**/*.scss')
-    .pipe(sass().on('error', sass.logError))
-    .pipe(autoprefixer({
-      browsers: ['last 2 versions'],
-      cascade: false
-    }))
-    .pipe(gulp.dest('css'));
+// Set the banner content
+var banner = ['/*!\n',
+    ' * Start Bootstrap - <%= pkg.title %> v<%= pkg.version %> (<%= pkg.homepage %>)\n',
+    ' * Copyright 2013-' + (new Date()).getFullYear(), ' <%= pkg.author %>\n',
+    ' * Licensed under <%= pkg.license.type %> (<%= pkg.license.url %>)\n',
+    ' */\n',
+    ''
+].join('');
+
+// Compile LESS files from /less into /css
+gulp.task('less', function() {
+    return gulp.src('less/freelancer.less')
+        .pipe(less())
+        .pipe(header(banner, { pkg: pkg }))
+        .pipe(gulp.dest('css'))
+        .pipe(browserSync.reload({
+            stream: true
+        }))
 });
 
-gulp.task('styles', ['fonts', 'sass'], function() {
-  return gulp.src([
-      'bower_components/normalize.css/normalize.css',
-      'bower_components/font-awesome/css/font-awesome.css',
-      'bower_components/minimal-devices/css/*.css',
-      'css/main.css'
-    ])
-    .pipe(concat('all.css'))
-    .pipe(rename('all.min.css'))
-    .pipe(minifyCSS())
-    .pipe(gulp.dest('css'))
-    .pipe(connect.reload());
+// Minify compiled CSS
+gulp.task('minify-css', ['less'], function() {
+    return gulp.src('css/freelancer.css')
+        .pipe(cleanCSS({ compatibility: 'ie8' }))
+        .pipe(rename({ suffix: '.min' }))
+        .pipe(gulp.dest('css'))
+        .pipe(browserSync.reload({
+            stream: true
+        }))
 });
 
-gulp.task('fonts', function() {
-  gulp.src('bower_components/font-awesome/fonts/*')
-    .pipe(gulp.dest('fonts'));
+// Minify JS
+gulp.task('minify-js', function() {
+    return gulp.src('js/freelancer.js')
+        .pipe(uglify())
+        .pipe(header(banner, { pkg: pkg }))
+        .pipe(rename({ suffix: '.min' }))
+        .pipe(gulp.dest('js'))
+        .pipe(browserSync.reload({
+            stream: true
+        }))
 });
 
-gulp.task('scripts', function() {
-  return gulp.src([
-      'bower_components/gsap/src/minified/TweenLite.min.js',
-      'bower_components/gsap/src/minified/easing/EasePack.min.js',
-      'scripts/rAF.js',
-      'scripts/**/*.js'
-    ])
-    .pipe(concat('all.js'))
-    .pipe(rename('all.min.js'))
-    .pipe(uglify())
-    .pipe(gulp.dest('js'))
-    .pipe(connect.reload());
-});
+// Copy vendor libraries from /node_modules into /vendor
+gulp.task('copy', function() {
+    gulp.src(['node_modules/bootstrap/dist/**/*', '!**/npm.js', '!**/bootstrap-theme.*', '!**/*.map'])
+        .pipe(gulp.dest('vendor/bootstrap'))
 
-gulp.task('html', function() {
-  gulp.src('index.html')
-    .pipe(connect.reload());
-});
+    gulp.src(['node_modules/jquery/dist/jquery.js', 'node_modules/jquery/dist/jquery.min.js'])
+        .pipe(gulp.dest('vendor/jquery'))
 
-gulp.task('watch', function() {
-  gulp.watch('index.html', ['html']);
-  gulp.watch('scripts/**/*.js', ['scripts']);
-  gulp.watch('sass/**/*.scss', ['styles']);
-});
+    gulp.src([
+            'node_modules/font-awesome/**',
+            '!node_modules/font-awesome/**/*.map',
+            '!node_modules/font-awesome/.npmignore',
+            '!node_modules/font-awesome/*.txt',
+            '!node_modules/font-awesome/*.md',
+            '!node_modules/font-awesome/*.json'
+        ])
+        .pipe(gulp.dest('vendor/font-awesome'))
+})
 
-gulp.task('connect', function() {
-  connect.server({ livereload: true });
-});
+// Run everything
+gulp.task('default', ['less', 'minify-css', 'minify-js', 'copy']);
 
-gulp.task('deploy', ['scripts', 'styles'], function() {
-  gulp.src([
-    'js/all.min.js',
-    'css/all.min.css',
-    'img/*',
-    'fonts/*',
-    'index.html',
-    'favicon.ico'
-  ], { base: './' })
-    .pipe(ghPages());
-});
+// Configure the browserSync task
+gulp.task('browserSync', function() {
+    browserSync.init({
+        server: {
+            baseDir: ''
+        },
+    })
+})
 
-gulp.task('default', ['connect', 'watch', 'scripts', 'styles']);
+// Dev task with browserSync
+gulp.task('dev', ['browserSync', 'less', 'minify-css', 'minify-js'], function() {
+    gulp.watch('less/*.less', ['less']);
+    gulp.watch('css/*.css', ['minify-css']);
+    gulp.watch('js/*.js', ['minify-js']);
+    // Reloads the browser whenever HTML or JS files change
+    gulp.watch('*.html', browserSync.reload);
+    gulp.watch('js/**/*.js', browserSync.reload);
+});
